@@ -24,6 +24,7 @@ public class Main extends JavaPlugin implements Listener {
         boolean unloadChunks = false;
         boolean deepHibernation = false;
         long sleepMillis = 1000L;
+        int hibernationCountdown = 30;
         Set<String> blacklist = new HashSet<String>();
         int playerCheckCount = 0;
     }
@@ -32,6 +33,8 @@ public class Main extends JavaPlugin implements Listener {
     private FileConfiguration config = getConfig();
     private static boolean isHibernating = false;
     private static boolean isDeepHibernating = false;
+    private static boolean countdownActive = false;
+    private static int countdownTimer = 0;
     private Set<Integer> suspendedTaskIds = new HashSet<Integer>();
 
     @Override
@@ -60,10 +63,17 @@ public class Main extends JavaPlugin implements Listener {
                     sender.sendMessage(String.format("§a[Hibernate] Deep hibernation is §%s%s",
                         hibernateConfig.deepHibernation ? "a" : "c",
                         hibernateConfig.deepHibernation ? "enabled" : "disabled"));
+                    sender.sendMessage(String.format("§a[Hibernate] Hibernation countdown: §e%d seconds",
+                        hibernateConfig.hibernationCountdown));
+                    
                     int onlinePlayerCount = getServer().getOnlinePlayers().size();
                     String serverState = "awake";
                     String color = "a";
-                    if (onlinePlayerCount == 0) {
+                    
+                    if (countdownActive) {
+                        serverState = "preparing for hibernation (" + countdownTimer + "s)";
+                        color = "6";
+                    } else if (onlinePlayerCount == 0) {
                         if (isDeepHibernating) {
                             serverState = "deep sleeping";
                             color = "c";
@@ -76,11 +86,15 @@ public class Main extends JavaPlugin implements Listener {
                     return true;
                 }
                 if (args[0].equalsIgnoreCase("wake")) {
-                    if (isDeepHibernating || isHibernating) {
+                    if (countdownActive) {
+                        countdownActive = false;
+                        countdownTimer = 0;
+                        sender.sendMessage("§a[Hibernate] Hibernation countdown cancelled!");
+                    } else if (isDeepHibernating || isHibernating) {
                         wakeUpServer();
                         sender.sendMessage("§a[Hibernate] Server has been manually awakened!");
                     } else {
-                        sender.sendMessage("§c[Hibernate] Server is already awake!");
+                        sender.sendMessage("§c[Hibernate] Server is already awake and no countdown is active!");
                     }
                     return true;
                 }
@@ -138,6 +152,7 @@ public class Main extends JavaPlugin implements Listener {
         config.addDefault("unloadChunks", true);
         config.addDefault("deepHibernation", false);
         config.addDefault("sleepMillis", 1000L);
+        config.addDefault("hibernationCountdown", 30);
         config.addDefault("blacklist", new ArrayList<String>());
         config.options().copyDefaults(true);
 
@@ -145,6 +160,7 @@ public class Main extends JavaPlugin implements Listener {
         hibernateConfig.unloadChunks = config.getBoolean("unloadChunks");
         hibernateConfig.deepHibernation = config.getBoolean("deepHibernation");
         hibernateConfig.sleepMillis = config.getLong("sleepMillis");
+        hibernateConfig.hibernationCountdown = config.getInt("hibernationCountdown");
         hibernateConfig.blacklist = loadBlacklistFromConfig(config);
 
         saveConfig();
@@ -200,34 +216,71 @@ public class Main extends JavaPlugin implements Listener {
                 Server server = Bukkit.getServer();
                 int onlineCount = server.getOnlinePlayers().size();
 
+                if (onlineCount > 0 && countdownActive) {
+                    countdownActive = false;
+                    countdownTimer = 0;
+                    getLogger().info("§6[Hibernate] Hibernation countdown cancelled - players joined!");
+                    return;
+                }
+
+                if (onlineCount > 0 && (isDeepHibernating || (hibernateConfig.playerCheckCount == 0 && isHibernating))) {
+                    wakeUpServer();
+                    hibernateConfig.playerCheckCount = onlineCount;
+                    return;
+                }
+
                 if (onlineCount == 0 && hibernateConfig.enabled) {
                     if (hibernateConfig.playerCheckCount != 0) {
                         String hibernationType = hibernateConfig.deepHibernation ? "Deep Hibernation" : "Hibernation";
-                        getLogger().info("Saving worlds before " + hibernationType);
+                        getLogger().info("§6[Hibernate] Saving worlds before " + hibernationType);
                         for (World world : server.getWorlds()) {
                             world.save();
                         }
-                        getLogger().info("Worlds saved!");
+                        getLogger().info("§6[Hibernate] Worlds saved!");
                         hibernateConfig.playerCheckCount = 0;
+
+                        countdownActive = true;
+                        countdownTimer = hibernateConfig.hibernationCountdown;
+                        getLogger().info("§6[Hibernate] Starting hibernation countdown: " + countdownTimer + " seconds");
                         return;
                     }
 
-                    if (hibernateConfig.deepHibernation && !isDeepHibernating) {
+                    if (countdownActive) {
+                        countdownTimer--;
+
+                        if (countdownTimer == 20 || countdownTimer == 10 || countdownTimer <= 5 && countdownTimer > 0) {
+                            Bukkit.broadcastMessage("§6[Hibernate] Server will hibernate in " + countdownTimer + " seconds...");
+                        }
+
+                        if (countdownTimer <= 0) {
+                            countdownActive = false;
+                            getLogger().info("§6[Hibernate] Countdown finished - starting hibernation!");
+                            
+                            if (hibernateConfig.deepHibernation && !isDeepHibernating) {
+                                deepHibernation();
+                            } else if (!hibernateConfig.deepHibernation) {
+                                try {
+                                    Thread.sleep(hibernateConfig.sleepMillis);
+                                    unloadChunksAndCleanMemory();
+                                } catch (Exception e) {}
+                            }
+                        }
+                        return;
+                    }
+
+                    if (hibernateConfig.deepHibernation && !isDeepHibernating && !countdownActive) {
                         deepHibernation();
-                    } else if (!hibernateConfig.deepHibernation) {
+                    } else if (!hibernateConfig.deepHibernation && !countdownActive) {
                         try {
                             Thread.sleep(hibernateConfig.sleepMillis);
                             unloadChunksAndCleanMemory();
                         } catch (Exception e) {}
                     }
-                } else if (onlineCount > 0 && (isDeepHibernating || (hibernateConfig.playerCheckCount == 0 && isHibernating))) {
-                    wakeUpServer();
-                    hibernateConfig.playerCheckCount = onlineCount;
                 } else {
                     hibernateConfig.playerCheckCount = onlineCount;
                 }
             }
-        }, 0L, hibernateConfig.deepHibernation ? 20L : 1L);
+        }, 0L, 20L);
     }
 
     private void startChunkUnloadTask() {
@@ -317,9 +370,14 @@ public class Main extends JavaPlugin implements Listener {
 
             isDeepHibernating = false;
             getLogger().info("Server awakened from deep hibernation!");
-
         } else if (isHibernating) {
             getLogger().info("Server awakened from normal hibernation");
+        }
+
+        if (countdownActive) {
+            countdownActive = false;
+            countdownTimer = 0;
+            getLogger().info("§6[Hibernate] Hibernation countdown cancelled due to server wake up");
         }
 
         isHibernating = false;

@@ -6,7 +6,7 @@
 
     <groupId>dk.noxitech</groupId>
     <artifactId>hibernatesystem</artifactId>
-    <version>1.1</version>
+    <version>1.2</version>
     <packaging>jar</packaging>
 
     <name>hibernatesystem</name>
@@ -20,6 +20,7 @@
 
     <build>
         <defaultGoal>clean package</defaultGoal>
+        <finalName>hibernatesystem</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
