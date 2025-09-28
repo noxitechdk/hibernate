@@ -1,0 +1,24 @@
+```
+# Whether the plugin is enabled
+enabled: true
+
+# Whether to use deep hibernation mode
+deepHibernation: false
+
+# How long to sleep between hibernation cycles (in milliseconds)
+sleepMillis: 1000
+
+# Countdown before hibernation starts (in seconds)
+# This prevents immediate hibernation when players disconnect
+hibernationCountdown: 30
+
+# Whether to unload chunks when hibernating
+unloadChunks: true
+
+# List of plugins that should prevent hibernation (case-insensitive)
+# You can also add URLs that contain blacklisted plugin names
+blacklist:
+  # Example entries:
+  # - "PluginName"
+  # - "https://example.com/blacklist.txt"
+```
