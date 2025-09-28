@@ -1,5 +1,6 @@
 name: Hibernate
-version: ${project.version}
+version: 1.0-SNAPSHOT
+api-version: 1.21
 main: dk.noxitech.hibernate.Main
 authors:
   - NuXi
