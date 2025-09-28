@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -64,6 +66,10 @@ public class Main extends JavaPlugin implements Listener {
         volatile boolean suspendOtherTasks = false;
         volatile boolean lowerThreadPriority = true;
         volatile boolean monitorCpuUsage = true;
+
+        volatile boolean disableEntityActivation = false;
+        volatile boolean disableTileEntityTicking = false;
+        volatile boolean disableMobSpawning = false;
     }
 
     public Set<Integer> getSuspendedTaskIds() {
@@ -319,6 +325,83 @@ public class Main extends JavaPlugin implements Listener {
             log.sendMessage(ColorUtils.getColored("&c[Hibernate] Failed to adjust thread priority: " + e.getMessage()));
         }
     }
+    
+    private void controlEntityActivation(boolean disable) {
+        if (!hibernateConfig.disableEntityActivation) {
+            return;
+        }
+        
+        try {
+            int affectedEntities = 0;
+            for (World world : Bukkit.getWorlds()) {
+                for (Entity entity : world.getEntities()) {
+                    if (entity instanceof LivingEntity) {
+                        LivingEntity living = (LivingEntity) entity;
+                        if (disable) {
+                            living.teleport(living.getLocation());
+                            affectedEntities++;
+                        } else {
+                            affectedEntities++;
+                        }
+                    }
+                }
+            }
+            
+            String action = disable ? "interrupted" : "restored";
+            if (affectedEntities > 0) {
+                log.sendMessage(ColorUtils.getColored("&6[Hibernate] Entity activation " + action + " for " + affectedEntities + " entities"));
+            }
+        } catch (Exception e) {
+            log.sendMessage(ColorUtils.getColored("&c[Hibernate] Failed to control entity activation: " + e.getMessage()));
+        }
+    }
+    
+    private void controlMobSpawning(boolean disable) {
+        if (!hibernateConfig.disableMobSpawning) {
+            return;
+        }
+        
+        try {
+            for (World world : Bukkit.getWorlds()) {
+                if (disable) {
+                    world.setSpawnFlags(false, false);
+                } else {
+                    world.setSpawnFlags(true, true);
+                }
+            }
+            
+            String action = disable ? "disabled" : "enabled";
+            log.sendMessage(ColorUtils.getColored("&6[Hibernate] Mob spawning " + action + " for all worlds"));
+            
+        } catch (Exception e) {
+            log.sendMessage(ColorUtils.getColored("&c[Hibernate] Failed to control mob spawning: " + e.getMessage()));
+        }
+    }
+    
+    private void controlTileEntityTicking(boolean disable) {
+        if (!hibernateConfig.disableTileEntityTicking) {
+            return;
+        }
+        
+        try {
+            if (disable) {
+                int chunksProcessed = 0;
+                for (World world : Bukkit.getWorlds()) {
+                    for (Chunk chunk : world.getLoadedChunks()) {
+                        if (chunk.unload(true, false)) {
+                            chunksProcessed++;
+                        }
+                    }
+                }
+                log.sendMessage(ColorUtils.getColored("&6[Hibernate] Aggressively unloaded " + chunksProcessed + " chunks to reduce tile entity activity"));
+            } else {
+                log.sendMessage(ColorUtils.getColored("&6[Hibernate] Tile entity processing will resume as chunks are loaded"));
+            }
+            
+        } catch (Exception e) {
+            log.sendMessage(ColorUtils.getColored("&c[Hibernate] Failed to control tile entity ticking: " + e.getMessage()));
+        }
+    }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
@@ -340,30 +423,39 @@ public class Main extends JavaPlugin implements Listener {
         hibernateConfig = new HibernateConfig();
         config = getConfig();
 
-        config.addDefault("enabled", true);
-        config.addDefault("unloadChunks", true);
-        config.addDefault("deepHibernation", false);
-        config.addDefault("sleepMillis", 1000L);
-        config.addDefault("hibernationCountdown", 30);
-        config.addDefault("blacklist", new ArrayList<String>());
-        config.addDefault("cpuOptimization", true);
-        config.addDefault("suspendOtherTasks", false);
-        config.addDefault("lowerThreadPriority", true);
-        config.addDefault("monitorCpuUsage", true);
-        config.options().copyDefaults(true);
+        boolean isNewConfig = config.getKeys(false).isEmpty();
+        
+        if (isNewConfig) {
+            config.addDefault("enabled", true);
+            config.addDefault("unloadChunks", true);
+            config.addDefault("deepHibernation", false);
+            config.addDefault("sleepMillis", 1000L);
+            config.addDefault("hibernationCountdown", 30);
+            config.addDefault("blacklist", new ArrayList<String>());
+            config.addDefault("cpuOptimization", true);
+            config.addDefault("suspendOtherTasks", false);
+            config.addDefault("lowerThreadPriority", true);
+            config.addDefault("monitorCpuUsage", true);
+            config.addDefault("disableEntityActivation", false);
+            config.addDefault("disableTileEntityTicking", false);
+            config.addDefault("disableMobSpawning", false);
+            config.options().copyDefaults(true);
+            saveConfig();
+        }
 
-        hibernateConfig.enabled = config.getBoolean("enabled");
-        hibernateConfig.unloadChunks = config.getBoolean("unloadChunks");
-        hibernateConfig.deepHibernation = config.getBoolean("deepHibernation");
-        hibernateConfig.sleepMillis = Math.max(100L, config.getLong("sleepMillis"));
-        hibernateConfig.hibernationCountdown = Math.max(5, config.getInt("hibernationCountdown"));
+        hibernateConfig.enabled = config.getBoolean("enabled", true);
+        hibernateConfig.unloadChunks = config.getBoolean("unloadChunks", true);
+        hibernateConfig.deepHibernation = config.getBoolean("deepHibernation", false);
+        hibernateConfig.sleepMillis = Math.max(100L, config.getLong("sleepMillis", 1000L));
+        hibernateConfig.hibernationCountdown = Math.max(5, config.getInt("hibernationCountdown", 30));
         hibernateConfig.blacklist = loadBlacklistFromConfig(config);
-        hibernateConfig.cpuOptimization = config.getBoolean("cpuOptimization");
-        hibernateConfig.suspendOtherTasks = config.getBoolean("suspendOtherTasks");
-        hibernateConfig.lowerThreadPriority = config.getBoolean("lowerThreadPriority");
-        hibernateConfig.monitorCpuUsage = config.getBoolean("monitorCpuUsage");
-
-        saveConfig();
+        hibernateConfig.cpuOptimization = config.getBoolean("cpuOptimization", true);
+        hibernateConfig.suspendOtherTasks = config.getBoolean("suspendOtherTasks", false);
+        hibernateConfig.lowerThreadPriority = config.getBoolean("lowerThreadPriority", true);
+        hibernateConfig.monitorCpuUsage = config.getBoolean("monitorCpuUsage", true);
+        hibernateConfig.disableEntityActivation = config.getBoolean("disableEntityActivation", false);
+        hibernateConfig.disableTileEntityTicking = config.getBoolean("disableTileEntityTicking", false);
+        hibernateConfig.disableMobSpawning = config.getBoolean("disableMobSpawning", false);
     }
 
     private Set<String> loadBlacklistFromConfig(FileConfiguration config) {
@@ -508,6 +600,10 @@ public class Main extends JavaPlugin implements Listener {
                 suspendOtherPluginTasks();
             }
 
+            controlEntityActivation(true);
+            controlMobSpawning(true);
+            controlTileEntityTicking(true);
+
             Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
                 try {
                     Thread.sleep(hibernateConfig.sleepMillis);
@@ -542,6 +638,10 @@ public class Main extends JavaPlugin implements Listener {
                 suspendOtherPluginTasks();
             }
 
+            controlEntityActivation(true);
+            controlMobSpawning(true);
+            controlTileEntityTicking(true);
+
             Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
                 try {
                     unloadAllChunksAggressively();
@@ -567,7 +667,9 @@ public class Main extends JavaPlugin implements Listener {
                 }
             });
         }
-    }    private void unloadAllChunksAggressively() {
+    }
+
+    private void unloadAllChunksAggressively() {
         Bukkit.getScheduler().runTask(this, () -> {
             int totalUnloaded = 0;
             for (World world : Bukkit.getWorlds()) {
@@ -622,6 +724,12 @@ public class Main extends JavaPlugin implements Listener {
                     log.sendMessage(ColorUtils.getColored("&a[Hibernate] Current CPU usage: " + String.format("%.2f%%", currentCpu * 100)));
                 }
             }
+        }
+
+        if (wasHibernating || wasDeepHibernating) {
+            controlEntityActivation(false);
+            controlMobSpawning(false);
+            controlTileEntityTicking(false);
         }
 
         if (wasDeepHibernating) {
