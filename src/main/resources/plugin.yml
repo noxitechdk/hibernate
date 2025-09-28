@@ -1,0 +1,16 @@
+name: Hibernate
+version: ${project.version}
+main: dk.noxitech.hibernate.Main
+authors:
+  - NuXi
+  - NoXiTech.dk
+commands:
+  hibernate:
+    description: "Check the status of the Hibernate plugin"
+    usage: "/hibernate [reload|status]"
+    permission: hibernate.admin
+    permission-message: "You don't have permission to use this command"
+permissions:
+  hibernate.admin:
+    description: "Allows access to hibernate commands"
+    default: op

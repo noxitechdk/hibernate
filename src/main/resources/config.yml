@@ -1,0 +1,18 @@
+# Whether the plugin is enabled
+enabled: true
+
+# Whether to use deep hibernation mode
+deepHibernation: true
+
+# How long to sleep between hibernation cycles (in milliseconds)
+sleepMillis: 1000
+
+# Whether to unload chunks when hibernating
+unloadChunks: true
+
+# List of plugins that should prevent hibernation (case-insensitive)
+# You can also add URLs that contain blacklisted plugin names
+blacklist:
+  # Example entries:
+  # - "PluginName"
+  # - "https://example.com/blacklist.txt"
