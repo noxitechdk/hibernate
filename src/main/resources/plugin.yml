@@ -1,7 +1,6 @@
 name: Hibernate
-version: ${protect.version}
+version: ${project.version}
 description: "A plugin that manages server hibernation"
-api-version: 1.21
 main: dk.noxitech.hibernate.Main
 authors:
   - NuXi
