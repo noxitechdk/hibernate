@@ -15,6 +15,28 @@ hibernationCountdown: 30
 # Whether to unload chunks when hibernating
 unloadChunks: true
 
+# Whether to disable entity activation when hibernating
+disableEntityActivation: false
+
+# Whether to disable tile entity ticking when hibernating
+disableTileEntityTicking: false
+
+# Whether to disable mob spawning when hibernating
+disableMobSpawning: false
+
+# CPU optimization settings (experimental)
+# Master switch to enable all CPU optimizations
+cpuOptimization: true
+
+# WARNING: Suspend scheduled tasks from other plugins (can break plugins!)
+suspendOtherTasks: false
+
+# Lower thread priority during hibernation to reduce CPU usage
+lowerThreadPriority: true
+
+# Monitor and report CPU usage statistics
+monitorCpuUsage: true
+
 # List of plugins that should prevent hibernation (case-insensitive)
 # You can also add URLs that contain blacklisted plugin names
 blacklist:
